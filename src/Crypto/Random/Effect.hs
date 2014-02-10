@@ -1,16 +1,15 @@
+-- | A Random effect.
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeOperators #-}
--- | A Random effect.
---
--- Any ideas to let the user specify the random number generator ('C.CPRG')
--- instead of hardcoding 'C.SystemRNG' without complicating the api and
--- reinventing state as 'SetMember' is very welcome.
 module Crypto.Random.Effect
-  ( RNG()
-  , runRNG
+  ( RNG
+  , runSystemRNG
   , runRNGWithPool
+  , runRNG
   , withRNG
   , withRNGIO
   , rngFork
@@ -21,9 +20,9 @@ module Crypto.Random.Effect
   , grabEntropy
   , unsafeGrabEntropy
   -- | reexports from 'crypto-random'
-  , C.CPRG()
-  , C.SystemRNG()
-  , C.EntropyPool()
+  , CPRG()
+  , SystemRNG()
+  , EntropyPool()
   ) where
 
 import Control.Eff
@@ -33,58 +32,75 @@ import Control.Eff.Reader.Strict
 import Data.ByteString (ByteString)
 import Data.SecureMem (SecureMem)
 import Data.Typeable (Typeable)
+import Crypto.Random (CPRG, EntropyPool, SystemRNG)
 import qualified Crypto.Random as C
 
-type RNG = State C.SystemRNG
+data RNG
 
-deriving instance Typeable C.SystemRNG
-deriving instance Typeable C.EntropyPool
+instance SetMember RNG (State gen) (State gen :> a) where
 
--- | Run the effect.
-runRNG
+deriving instance Typeable SystemRNG
+deriving instance Typeable EntropyPool
+
+-- | Run the effect using 'SystemRNG'.
+runSystemRNG
   :: SetMember Lift (Lift IO) r
-  => Eff (RNG :> Reader C.EntropyPool :> r) a -> Eff r a
-runRNG e = lift C.createEntropyPool >>= flip runRNGWithPool e
+  => Eff (State SystemRNG :> Reader EntropyPool :> r) a -> Eff r a
+runSystemRNG = runRNG
+
+-- | Run the effect without specifying the 'CPRG'.
+--
+-- This is only useful when the type of the 'CPRG' is bound by an explicit
+-- type annotation (see 'runSystemRNG' which is 'runRNG' with bound type)
+-- or any function within the effect binds it.
+runRNG :: (SetMember Lift (Lift IO) r, Typeable gen, CPRG gen)
+  => Eff (State gen :> Reader EntropyPool :> r) a -> Eff r a
+runRNG e = createEntropyPool >>= flip runRNGWithPool e
 
 runRNGWithPool
-  :: SetMember Lift (Lift IO) r
-  => C.EntropyPool -> Eff (RNG :> Reader C.EntropyPool :> r) a -> Eff r a
+  :: (SetMember Lift (Lift IO) r, Typeable gen, CPRG gen)
+  => EntropyPool -> Eff (State gen :> Reader EntropyPool :> r) a -> Eff r a
 runRNGWithPool pool = flip runReader pool . evalState (C.cprgCreate pool)
 
-withRNG :: Member RNG r => (C.SystemRNG -> Eff r (a, C.SystemRNG)) -> Eff r a
+withRNG :: (SetMember RNG (State gen) r, Typeable gen) => (gen -> Eff r (a, gen)) -> Eff r a
 withRNG f = do
     rng <- get
     (a, rng') <- f rng
     put rng'
     return a
 
-withRNGPure :: Member RNG r => (C.SystemRNG -> (a, C.SystemRNG)) -> Eff r a
+withRNGPure :: (SetMember RNG (State gen) r, Typeable gen) => (gen -> (a, gen)) -> Eff r a
 withRNGPure f = withRNG (return . f)
 
 withRNGIO
-  :: (SetMember Lift (Lift IO) r, Member RNG r)
-  => (C.SystemRNG -> IO (a, C.SystemRNG)) -> Eff r a
+  :: (SetMember Lift (Lift IO) r, SetMember RNG (State gen) r, Typeable gen)
+  => (gen -> IO (a, gen)) -> Eff r a
 withRNGIO f = withRNG (lift . f)
 
-rngFork :: Member RNG r => Eff r C.SystemRNG
+rngFork :: (SetMember RNG (State gen) r, CPRG gen, Typeable gen) => Eff r gen
 rngFork = withRNGPure C.cprgFork
 
-randomBytes :: Member RNG r => Int -> Eff r ByteString
+randomBytes :: (SetMember RNG (State gen) r, CPRG gen, Typeable gen) => Int -> Eff r ByteString
 randomBytes = withRNGPure . C.cprgGenerate
 
-randomBytesWithEntropy :: Member RNG r => Int -> Eff r ByteString
+randomBytesWithEntropy :: (SetMember RNG (State gen) r, CPRG gen, Typeable gen) => Int -> Eff r ByteString
 randomBytesWithEntropy = withRNGPure . C.cprgGenerateWithEntropy
 
-withRandomBytes :: Member RNG r => Int -> (ByteString -> Eff r a) -> Eff r a
+withRandomBytes :: (SetMember RNG (State gen) r, CPRG gen, Typeable gen) => Int -> (ByteString -> Eff r a) -> Eff r a
 withRandomBytes cnt f = randomBytes cnt >>= f
 
-createEntropyPool :: SetMember Lift (Lift IO) r => Eff r C.EntropyPool
+createEntropyPool :: SetMember Lift (Lift IO) r => Eff r EntropyPool
 createEntropyPool = lift C.createEntropyPool
 
 grabEntropy
-  :: (SetMember Lift (Lift IO) r, Member (Reader C.EntropyPool) r)
+  :: (SetMember Lift (Lift IO) r, Member (Reader EntropyPool) r)
   => Int -> Eff r SecureMem
 grabEntropy cnt = ask >>= lift . C.grabEntropyIO cnt
 
-unsafeGrabEntropy :: Member (Reader C.EntropyPool) r => Int -> Eff r SecureMem
+unsafeGrabEntropy :: Member (Reader EntropyPool) r => Int -> Eff r SecureMem
 unsafeGrabEntropy cnt = fmap (C.grabEntropy cnt) ask
+
+t = runLift $ runRNG $ withRNG f
+  -- where f :: CPRG gen => gen -> Eff r (Int, gen)
+  where f :: SystemRNG -> Eff r (Int, SystemRNG)
+        f g = return (2, g)
