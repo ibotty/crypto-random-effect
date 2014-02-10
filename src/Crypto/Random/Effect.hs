@@ -1,4 +1,6 @@
--- | A Random effect.
+-- | An effect that can generate random bytes.
+--
+-- It is essentially a 'State' monad with a given 'CPRG'.
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -19,7 +21,7 @@ module Crypto.Random.Effect
   , createEntropyPool
   , grabEntropy
   , unsafeGrabEntropy
-  -- | reexports from 'crypto-random'
+  -- * Re-exports
   , CPRG()
   , SystemRNG()
   , EntropyPool()
@@ -35,9 +37,10 @@ import Data.Typeable (Typeable)
 import Crypto.Random (CPRG, EntropyPool, SystemRNG)
 import qualified Crypto.Random as C
 
+-- | Type marker to ensure that there is only one RNG.
 data RNG
 
-instance SetMember RNG (State gen) (State gen :> a) where
+instance SetMember RNG (State gen) (State gen :> a)
 
 deriving instance Typeable SystemRNG
 deriving instance Typeable EntropyPool
@@ -57,11 +60,13 @@ runRNG :: (SetMember Lift (Lift IO) r, Typeable gen, CPRG gen)
   => Eff (State gen :> Reader EntropyPool :> r) a -> Eff r a
 runRNG e = createEntropyPool >>= flip runRNGWithPool e
 
+-- | Run the effect with a given 'EntropyPool'.
 runRNGWithPool
   :: (SetMember Lift (Lift IO) r, Typeable gen, CPRG gen)
   => EntropyPool -> Eff (State gen :> Reader EntropyPool :> r) a -> Eff r a
 runRNGWithPool pool = flip runReader pool . evalState (C.cprgCreate pool)
 
+-- | Wrap an effect that uses the 'CPRG' directly.
 withRNG :: (SetMember RNG (State gen) r, Typeable gen) => (gen -> Eff r (a, gen)) -> Eff r a
 withRNG f = do
     rng <- get
@@ -69,38 +74,54 @@ withRNG f = do
     put rng'
     return a
 
+-- | Wrap a pure function that uses the 'CPRG' directly.
 withRNGPure :: (SetMember RNG (State gen) r, Typeable gen) => (gen -> (a, gen)) -> Eff r a
 withRNGPure f = withRNG (return . f)
 
+-- | Wrap an IO action that uses the 'CPRG' directly.
 withRNGIO
   :: (SetMember Lift (Lift IO) r, SetMember RNG (State gen) r, Typeable gen)
   => (gen -> IO (a, gen)) -> Eff r a
 withRNGIO f = withRNG (lift . f)
 
+-- | Fork a CPRG into a new independent CPRG.
+--
+-- As entropy is mixed to generate safely a new generator, 2 calls with the
+-- same CPRG will not produce the same output.
 rngFork :: (SetMember RNG (State gen) r, CPRG gen, Typeable gen) => Eff r gen
 rngFork = withRNGPure C.cprgFork
 
+-- | Generate a number of bytes using the CPRG.
 randomBytes :: (SetMember RNG (State gen) r, CPRG gen, Typeable gen) => Int -> Eff r ByteString
 randomBytes = withRNGPure . C.cprgGenerate
 
+-- | Similar to 'randomBytes' except that the random data is mixed with pure
+-- entropy, so the result is not reproducible after use, but it provides
+-- more guarantee, theorically speaking, in term of the randomness
+-- generated.
 randomBytesWithEntropy :: (SetMember RNG (State gen) r, CPRG gen, Typeable gen) => Int -> Eff r ByteString
 randomBytesWithEntropy = withRNGPure . C.cprgGenerateWithEntropy
 
-withRandomBytes :: (SetMember RNG (State gen) r, CPRG gen, Typeable gen) => Int -> (ByteString -> Eff r a) -> Eff r a
-withRandomBytes cnt f = randomBytes cnt >>= f
+-- | Consume a number of random bytes with a pure function.
+--
+-- Note, that this is simply
+--
+-- > randomBytes cnt >>= return . f
+withRandomBytes :: (SetMember RNG (State gen) r, CPRG gen, Typeable gen) => Int -> (ByteString -> a) -> Eff r a
+withRandomBytes cnt f = randomBytes cnt >>= return . f
 
+-- Create a new entropy pool.
 createEntropyPool :: SetMember Lift (Lift IO) r => Eff r EntropyPool
 createEntropyPool = lift C.createEntropyPool
 
+-- | Grab a chunk of entropy from the entropy pool.
 grabEntropy
   :: (SetMember Lift (Lift IO) r, Member (Reader EntropyPool) r)
   => Int -> Eff r SecureMem
 grabEntropy cnt = ask >>= lift . C.grabEntropyIO cnt
 
+-- | Grab a chunk of entropy from the entropy pool.
+--
+-- Beware: uses unsafePerformIO under the hood.
 unsafeGrabEntropy :: Member (Reader EntropyPool) r => Int -> Eff r SecureMem
 unsafeGrabEntropy cnt = fmap (C.grabEntropy cnt) ask
-
-t = runLift $ runRNG $ withRNG f
-  -- where f :: CPRG gen => gen -> Eff r (Int, gen)
-  where f :: SystemRNG -> Eff r (Int, SystemRNG)
-        f g = return (2, g)
