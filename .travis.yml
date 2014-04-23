@@ -26,12 +26,8 @@ before_install:
  - export PATH=/opt/ghc/$GHCVER/bin:$PATH
 
 install:
- - cabal-1.18 update cprng-aes-effect crypto-random-effect
+ - cabal-1.18 update
  - cabal-1.18 install --only-dependencies --enable-tests cprng-aes-effect crypto-random-effect
 
 script:
- - cabal-1.18 configure --enable-tests -v2 cprng-aes-effect crypto-random-effect
- - cabal-1.18 build cprng-aes-effect crypto-random-effect
- - cabal-1.18 test cprng-aes-effect crypto-random-effect
- - cabal-1.18 check cprng-aes-effect crypto-random-effect
- - cabal-1.18 sdist cprng-aes-effect crypto-random-effect
+ - cabal-1.18 install cprng-aes-effect/ crypto-random-effect/
