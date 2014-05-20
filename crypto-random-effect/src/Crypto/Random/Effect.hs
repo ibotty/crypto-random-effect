@@ -27,6 +27,7 @@ module Crypto.Random.Effect
   , EntropyPool()
   ) where
 
+import Control.Applicative ((<$>))
 import Control.Eff
 import Control.Eff.Lift
 import Control.Eff.State.Strict
@@ -108,7 +109,7 @@ randomBytesWithEntropy = withRNGPure . C.cprgGenerateWithEntropy
 --
 -- > randomBytes cnt >>= return . f
 withRandomBytes :: (SetMember RNG (State gen) r, CPRG gen, Typeable gen) => Int -> (ByteString -> a) -> Eff r a
-withRandomBytes cnt f = randomBytes cnt >>= return . f
+withRandomBytes cnt f = f <$> randomBytes cnt
 
 -- Create a new entropy pool.
 createEntropyPool :: SetMember Lift (Lift IO) r => Eff r EntropyPool
