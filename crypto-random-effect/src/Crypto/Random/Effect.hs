@@ -32,6 +32,7 @@ import Control.Eff.State.Strict
 import Control.Eff.Reader.Strict
 import Data.ByteString (ByteString)
 import Data.SecureMem (SecureMem)
+import Data.Typeable (Typeable)
 import Crypto.Random (CPRG, EntropyPool, SystemRNG)
 import qualified Crypto.Random as C
 
