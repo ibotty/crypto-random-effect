@@ -2,7 +2,7 @@
 --  documentation, see http://haskell.org/cabal/users-guide/
 
 name:                crypto-random-effect
-version:             0.2.0.3
+version:             0.2.0.4
 synopsis:            A random effect using crypto-random
 description:         Any help (especially documentation) is welcome
 homepage:            https://github.com/ibotty/crypto-random-effect
@@ -22,7 +22,7 @@ library
   -- other-extensions:    
   build-depends:       base >=4.6 && <5
                      , bytestring <= 0.11
-                     , crypto-random >=0.0.7 && <0.1
+                     , crypto-random >=0.0.8 && <0.1
                      , extensible-effects ==1.4.* || ==1.7.*
                      , securemem ==0.1.*
                      , transformers >=0.3 && <0.5

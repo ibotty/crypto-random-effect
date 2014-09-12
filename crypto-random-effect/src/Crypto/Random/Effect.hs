@@ -1,11 +1,9 @@
 -- | An effect that can generate random bytes.
 --
 -- It is essentially a 'State' monad with a given 'CPRG'.
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeOperators #-}
 module Crypto.Random.Effect
   ( RNG
@@ -34,7 +32,6 @@ import Control.Eff.State.Strict
 import Control.Eff.Reader.Strict
 import Data.ByteString (ByteString)
 import Data.SecureMem (SecureMem)
-import Data.Typeable (Typeable)
 import Crypto.Random (CPRG, EntropyPool, SystemRNG)
 import qualified Crypto.Random as C
 
@@ -42,9 +39,6 @@ import qualified Crypto.Random as C
 data RNG
 
 instance SetMember RNG (State gen) (State gen :> a)
-
-deriving instance Typeable SystemRNG
-deriving instance Typeable EntropyPool
 
 -- | Run the effect using 'SystemRNG'.
 runSystemRNG
