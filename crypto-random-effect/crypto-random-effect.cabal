@@ -23,7 +23,7 @@ library
   build-depends:       base >=4.6 && <5
                      , bytestring <= 0.11
                      , crypto-random >=0.0.8 && <0.1
-                     , extensible-effects ==1.4.* || ==1.7.*
+                     , extensible-effects ==1.4.* || ==1.7.* || ==1.9.*
                      , securemem ==0.1.*
                      , transformers >=0.3 && <0.5
   hs-source-dirs:      src
