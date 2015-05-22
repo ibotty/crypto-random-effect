@@ -2,30 +2,34 @@
 # NB: don't set `language: haskell` here
 # See https://github.com/hvr/multi-ghc-travis for more information
  
-notifications:
-  email:
-    - ibotty+travis@ibotty.net
-  on_success: never
-  on_failure: always
-
 env:
- - GHCVER=7.6.3
- - GHCVER=7.8.2
- - GHCVER=head
+ - CABALVER=1.16 GHCVER=7.6.3
+ - CABALVER=1.18 GHCVER=7.8.4
+ - CABALVER=1.22 GHCVER=7.10.1
+ - CABALVER=head GHCVER=head
 
 matrix:
   allow_failures:
-    - env: GHCVER=head
+    - env: CABALVER=head GHCVER=head
 
 before_install:
- - sudo add-apt-repository -y ppa:hvr/ghc
- - sudo apt-get update
- - sudo apt-get install cabal-install-1.18 ghc-$GHCVER
- - export PATH=/opt/ghc/$GHCVER/bin:$PATH
+ - travis_retry sudo add-apt-repository -y ppa:hvr/ghc
+ - travis_retry sudo apt-get update
+ - travis_retry sudo apt-get install cabal-install-$CABALVER ghc-$GHCVER
+ - export PATH=/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$PATH
+ - |
+   if [ $GHCVER = "head" ] || [ ${GHCVER%.*} = "7.8" ] || [ ${GHCVER%.*} = "7.10" ]; then
+     travis_retry sudo apt-get install happy-1.19.4 alex-3.1.3
+     export PATH=/opt/alex/3.1.3/bin:/opt/happy/1.19.4/bin:$PATH
+   else
+     travis_retry sudo apt-get install happy alex
+   fi
 
 install:
- - cabal-1.18 update
- - cabal-1.18 install --only-dependencies --enable-tests crypto-random-effect cprng-aes-effect 
+ - cabal --version
+ - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
+ - travis_retry cabal update
+ - travis_retry cabal install cabal-src cabal-meta
 
 script:
- - cabal-1.18 install crypto-random-effect/ cprng-aes-effect/
+ - cabal-meta install --only-dependencies --run-tests --enable-benchmarks --force-reinstalls
